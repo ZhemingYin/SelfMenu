@@ -13,6 +13,32 @@ import PhotosUI
 import UIKit
 
 
+struct ConditionalGlassEffect: ViewModifier {
+    var strokeColor: Color = .red
+    var overlayLineWidth: CGFloat = 12
+    
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, visionOS 26.0, macOS 26.0, *) {
+            content
+                .glassEffect()
+        } else {
+            content
+                .background(Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        // 2. 在这里使用 strokeColor 变量
+                        .stroke(strokeColor, lineWidth: overlayLineWidth)
+                )
+        }
+    }
+}
+
+extension View {
+    func conditionalGlassEffect(strokeColor: Color = .red, overlayLineWidth: CGFloat = 12) -> some View {
+        modifier(ConditionalGlassEffect(strokeColor: strokeColor, overlayLineWidth: overlayLineWidth))
+    }
+}
+
 class HapticManager {
     static let shared = HapticManager()
     
@@ -58,6 +84,8 @@ struct CardFront: View {
     @Binding var currentIndex: Int
     @Binding var isEditingMenu: Bool
     
+    var cardSize: CGSize
+    
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \MenuItems.MenuIndex) private var menuItems: [MenuItems]
@@ -90,32 +118,34 @@ struct CardFront: View {
                             lineWidth: 1.2
                         )
                 )
-//                .shadow(color: .black.opacity(0.15), radius: 50, x: 0, y: 5) // 阴影让卡片浮在背景上
                 
             VStack {
-                Spacer()
+//                Spacer()
                 if let imageData = currentMenuItem?.MenuImageData,
                    let uiImage = UIImage(data: imageData) {
                     Image(uiImage: uiImage)
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 240, height: 350)
-                        .clipShape(RoundedRectangle(cornerRadius: 30))
+//                        .frame(width: 240, height: 350)
+                        .frame(width: cardSize.width*0.9, height: cardSize.height*0.7)
+                        .padding(.top, cardSize.width*0.05)
+                        .clipShape(RoundedRectangle(cornerRadius: max(50 - cardSize.width * 0.05, 0)))
 //                        .padding(.bottom, 20)
                         .onLongPressGesture(minimumDuration: 0.2) {
                             if isEditingMenu {
                                 showingPhotoPicker = true
                             }
                         }
-                    
                 }
                 else {
                     Button {
                         showingPhotoPicker = true
                     } label: {
-                        RoundedRectangle(cornerRadius: 30)
+                        RoundedRectangle(cornerRadius: max(50 - cardSize.width * 0.05, 0))
                             .stroke(Color.secondary, style: StrokeStyle(lineWidth: 2, dash: [6]))
-                            .frame(width: 240, height: 350)
+//                            .frame(width: 240, height: 350)
+                            .frame(width: cardSize.width*0.9, height: cardSize.height*0.7)
+                            .padding(.top, cardSize.width*0.05)
                             .overlay(
                                 Image(systemName: "plus")
                                     .font(.largeTitle)
@@ -146,7 +176,9 @@ struct CardFront: View {
                     .disabled(!isEditingMenu)
                     Spacer()
                 }
-                .padding(.bottom, 50)
+//                .padding(.bottom, 50)
+                
+                Spacer()
             }
         }
         .photosPicker(isPresented: $showingPhotoPicker, selection: $selectedImageItem)
@@ -193,6 +225,9 @@ struct CardFront: View {
 // MARK: - 卡片背面
 struct CardBack: View {
     @Binding var currentIndex: Int
+    @Binding var isEditingMenu: Bool
+    
+    var cardSize: CGSize
     
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -200,6 +235,11 @@ struct CardBack: View {
     private var currentMenuItem: MenuItems? {
         menuItems.first { $0.MenuIndex == currentIndex }
     }
+    
+    @State private var showStepPhotoPicker = false
+    @State private var selectedStepPhotoItem: PhotosPickerItem? = nil
+    @State private var targetStepIndex: Int? = nil
+    @State private var activeAlarmIndex: Int? = nil
     
     var body: some View {
         ZStack {
@@ -222,58 +262,371 @@ struct CardBack: View {
                             lineWidth: 1.2
                         )
                 )
-//                .shadow(color: .black.opacity(0.15), radius: 50, x: 0, y: 5) // 阴影让卡片浮在背景上
+            
             ScrollView {
+                
                 VStack(alignment: .leading) {
                     if let item = currentMenuItem {
                         Text("Materials:")
                             .font(.title2)
                             .bold()
-                            .padding(.top, 20)
+                            .padding(.bottom, 2)
+                        
+                        if isEditingMenu && item.MenuMaterialNames.isEmpty {
+                            HStack(spacing: 10) {
+                                Button {
+                                    insertMaterialItem(at: 0, for: item)
+                                } label: {
+                                    Image(systemName: "plus.circle")
+                                        .font(.title3)
+                                        .foregroundColor(.blue)
+                                }
+                                .buttonStyle(.plain)
+                                
+                                Spacer()
+                            }
+                            .padding(.vertical, 2)
+                        }
                         
                         ForEach(item.MenuMaterialNames.indices, id: \.self) { index1 in
                             let name = item.MenuMaterialNames[index1]
                             let count = item.MenuMaterialCounts[index1]
                             let comment = item.MenuMaterialComments[index1]
-
-                            HStack {
-                                Text("• \(name), ")
-                                    .font(.title3)
-                                    .foregroundColor(.primary)
-
-                                Text("\(count)")
-                                    .font(.title3)
-                                    .foregroundColor(.primary)
-
-                                if comment != "None" {
-                                    Text(" — \(comment)")
+                            
+                            if !isEditingMenu {
+                                HStack {
+                                    Text("\(index1 + 1). ")
                                         .font(.title3)
                                         .foregroundColor(.primary)
+                                        .bold()
+                                    
+                                    Text("\(name), ")
+                                        .font(.title3)
+                                        .foregroundColor(.primary)
+                                    
+                                    Text("\(count)")
+                                        .font(.title3)
+                                        .foregroundColor(.primary)
+                                    
+                                    if comment != "None" {
+                                        Text(" — \(comment)")
+                                            .font(.title3)
+                                            .foregroundColor(.primary)
+                                    }
                                 }
+                                .padding(1)
+                            } else {
+                                VStack {
+                                    HStack {
+                                        Text("\(index1 + 1). ")
+                                            .font(.footnote)
+                                            .foregroundColor(.primary)
+                                        Text("Name: ")
+                                            .font(.footnote)
+                                            .foregroundColor(.secondary)
+                                        TextField("Name", text: Binding(
+                                            get: {
+                                                if index1 < item.MenuMaterialNames.count {
+                                                    return item.MenuMaterialNames[index1]
+                                                }
+                                                return ""
+                                            },
+                                            set: { newValue in
+                                                if index1 < item.MenuMaterialNames.count {
+                                                    item.MenuMaterialNames[index1] = newValue.isEmpty ? "No Name" : newValue
+                                                }
+                                            }
+                                        ))
+                                        .textFieldStyle(.roundedBorder)
+                                    }
+                                    
+                                    HStack {
+                                        Text("Count: ")
+                                            .font(.footnote)
+                                            .foregroundColor(.secondary)
+                                        
+                                        TextField("Count", text: Binding(
+                                            get: {
+                                                if index1 < item.MenuMaterialCounts.count {
+                                                    return item.MenuMaterialCounts[index1]
+                                                }
+                                                return ""
+                                            },
+                                            set: { newValue in
+                                                if index1 < item.MenuMaterialCounts.count {
+                                                    item.MenuMaterialCounts[index1] = newValue.isEmpty ? "No Count" : newValue
+                                                }
+                                            }
+                                        ))
+                                        .textFieldStyle(.roundedBorder)
+                                    }
+                                    
+                                    HStack {
+                                        Text("Comment (Optional): ")
+                                            .font(.footnote)
+                                            .foregroundColor(.secondary)
+                                        
+                                        TextField("Comment (Optional)", text: Binding(
+                                            get: {
+                                                if index1 < item.MenuMaterialComments.count {
+                                                    return item.MenuMaterialComments[index1]
+                                                }
+                                                return ""
+                                            },
+                                            set: { newValue in
+                                                if index1 < item.MenuMaterialComments.count {
+                                                    item.MenuMaterialComments[index1] = newValue.isEmpty ? "None" : newValue
+                                                }
+                                            }
+                                        ))
+                                        .textFieldStyle(.roundedBorder)
+                                    }
+                                    
+                                    HStack(spacing: 10) {
+                                        Button {
+                                            insertMaterialItem(at: index1 + 1, for: item)
+                                        } label: {
+                                            Image(systemName: "plus.circle")
+                                                .font(.title3)
+                                                .foregroundColor(.blue)
+                                        }
+                                        .buttonStyle(.plain)
+                                        
+                                        Button {
+                                            deleteMaterialItem(at: index1, for: item)
+                                        } label: {
+                                            Image(systemName: "minus.circle")
+                                                .font(.title3)
+                                                .foregroundColor(.red)
+                                        }
+                                        .buttonStyle(.plain)
+                                        
+                                        Spacer()
+                                    }
+                                }
+                                .padding(.vertical, 2)
                             }
                         }
-                        
-                        Divider()
-                            .foregroundStyle(.primary)
-                            .padding(.vertical, 10)
+                    }
+                
+                    Divider()
+                        .foregroundStyle(.blue)
+                        .padding(.vertical, 5)
+                    
+                    if let item = currentMenuItem {
                         
                         Text("Steps:")
                             .font(.title2)
                             .bold()
+                            .padding(.bottom, 2)
+                        
+                        if isEditingMenu && item.MenuSteps.isEmpty {
+                            HStack(spacing: 10) {
+                                Button {
+                                    insertStepItem(at: 0, for: item)
+                                } label: {
+                                    Image(systemName: "plus.circle")
+                                        .font(.title3)
+                                        .foregroundColor(.blue)
+                                }
+                                .buttonStyle(.plain)
+                                
+                                Spacer()
+                            }
+                            .padding(.vertical, 2)
+                        }
                         
                         ForEach(item.MenuSteps.indices, id: \.self) { index2 in
                             let step = item.MenuSteps[index2]
+                            let stepAlarm = item.MenuStepAlarm[index2]
                             let stepImageData = item.MenuStepImageData[index2]
-
-                            HStack {
-                                Text("\(index2 + 1). ")
-                                    .font(.title3)
-                                    .foregroundColor(.primary)
+                            
+                            if !isEditingMenu {
+                                let indexText = Text("\(index2 + 1). ").font(.title3).bold()
+                                            
+                                // B. 正文 (普通)
+                                let bodyText = Text(step).font(.title3)
                                 
-                                Text("\(step)")
-                                    .font(.title3)
-                                    .foregroundColor(.primary)
+                                // C. 闹钟标签 (如果有)
+                                var combinedText: Text {
+                                    if let alarm = stepAlarm, alarm > 0 {
+                                        // 创建一个带图标的时间文本
+                                        let alarmIcon = Text(Image(systemName: "timer")).font(.caption).foregroundColor(.orange)
+                                        let alarmTime = Text(" \(alarm)m").font(.caption).bold().foregroundColor(.orange)
+                                        
+                                        // 拼接逻辑：序号 + 正文 + (空格) + 图标 + 时间
+                                        // 注意：这里加了几个空格 "   " 让时间稍微隔开一点
+                                        return indexText + bodyText + Text("   ") + alarmIcon + alarmTime
+                                    } else {
+                                        return indexText + bodyText
+                                    }
+                                }
+                                
+                                VStack {
+//                                    HStack {
+//                                        Text("\(index2 + 1). ")
+//                                            .font(.title3)
+//                                            .foregroundColor(.primary)
+//                                        
+//                                        Text("\(step)")
+//                                            .font(.title3)
+//                                            .foregroundColor(.primary)
+//                                        
+//                                        Spacer()
+//                                        
+//                                        if let stepAlarm = stepAlarm, stepAlarm > 0 { // 只有非 nil 且大于 0 才显示
+//                                            Label("\(stepAlarm)m", systemImage: "timer")
+//                                                .padding(1)
+//                                                .background(Color.orange.opacity(0.1))
+//                                                .foregroundColor(.orange)
+//                                                .cornerRadius(8)
+//                                        }
+//                                        
+//                                    }
+//                                    .padding(1)
+                                    
+                                    combinedText
+                                        .foregroundColor(.primary)
+                                        .lineSpacing(4) // 增加行间距，阅读更舒适
+                                        .frame(maxWidth: .infinity, alignment: .leading) // 左右撑满，靠左对齐
+                                        .fixedSize(horizontal: false, vertical: true) // 允许垂直方向无限延伸(换行)
+                                        .padding(1)
+                                    
+                                    if let data = stepImageData, let uiImage = UIImage(data: data) {
+                                        Image(uiImage: uiImage)
+                                            .resizable()
+                                            .scaledToFit()
+                                            .cornerRadius(12)      // 圆角更美观
+                                            .frame(maxWidth: .infinity) // 让图片居中
+                                    }
+                                }
+                                
+                            } else {
+                                VStack {
+                                    HStack {
+                                        Text("\(index2 + 1). ")
+                                            .font(.footnote)
+                                            .foregroundColor(.primary)
+                                        Text("Step: ")
+                                            .font(.footnote)
+                                            .foregroundColor(.secondary)
+                                        TextField("Step", text: Binding(
+                                            get: {
+                                                if index2 < item.MenuSteps.count {
+                                                    return item.MenuSteps[index2]
+                                                }
+                                                return ""
+                                            },
+                                            set: { newValue in
+                                                if index2 < item.MenuSteps.count {
+                                                    item.MenuSteps[index2] = newValue.isEmpty ? "No Name" : newValue
+                                                }
+                                            }
+                                        ))
+                                        .textFieldStyle(.roundedBorder)
+                                    }
+                                    
+                                    if let data = stepImageData, let uiImage = UIImage(data: data) {
+                                        Image(uiImage: uiImage)
+                                            .resizable()
+                                            .scaledToFit()
+                                            .cornerRadius(12)      // 圆角更美观
+                                            .frame(maxWidth: .infinity) // 让图片居中
+                                            .onLongPressGesture(minimumDuration: 0.2) {
+                                                if isEditingMenu {
+                                                    targetStepIndex = index2
+                                                    showStepPhotoPicker = true
+                                                }
+                                            }
+                                    }
+                                    
+                                    HStack(spacing: 10) {
+                                        Button {
+                                            insertStepItem(at: index2 + 1, for: item)
+                                        } label: {
+                                            Image(systemName: "plus.circle")
+                                                .font(.title3)
+                                                .foregroundColor(.blue)
+                                        }
+                                        .buttonStyle(.plain)
+                                        
+                                        Button {
+                                            deleteStepItem(at: index2, for: item)
+                                        } label: {
+                                            Image(systemName: "minus.circle")
+                                                .font(.title3)
+                                                .foregroundColor(.red)
+                                        }
+                                        .buttonStyle(.plain)
+                                        
+                                        Button {
+                                            targetStepIndex = index2
+                                            showStepPhotoPicker = true
+                                        } label: {
+                                            Image(systemName: item.MenuStepImageData[index2] != nil ? "photo.fill" : "photo")
+                                                .font(.title3)
+                                                .foregroundColor(.blue)
+                                        }
+                                        .buttonStyle(.plain)
+                                        
+                                        Button {
+                                            activeAlarmIndex = index2
+                                        } label: {
+                                            let hasTime = (index2 < item.MenuStepAlarm.count && (item.MenuStepAlarm[index2] ?? 0) > 0)
+                                            Image(systemName: hasTime ? "alarm.fill" : "alarm")
+                                                .font(.title3)
+                                                .foregroundColor(.orange)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .popover(isPresented: Binding<Bool>(
+                                            get: {
+                                                activeAlarmIndex == index2
+                                            },
+                                            set: { newValue in
+                                                // 当弹窗关闭时 (newValue == false)，清空索引
+                                                if !newValue { activeAlarmIndex = nil }
+                                            }
+                                        ), arrowEdge: .bottom) {
+                                            VStack(spacing: 10) {
+                                                Text("Timer")
+                                                    .font(.headline)
+                                                    .padding(.top, 10)
+                                                
+                                                Picker("Time", selection: Binding<Int>(
+                                                    get: {
+                                                        if index2 < item.MenuStepAlarm.count {
+                                                            return item.MenuStepAlarm[index2] ?? 0
+                                                        }
+                                                        return 0
+                                                    },
+                                                    set: { newValue in
+                                                        if index2 < item.MenuStepAlarm.count {
+                                                            // 在主线程/动画块中更新 UI 绑定的数据
+                                                            withAnimation {
+                                                                let valueToSave: Int? = (newValue == 0 ? nil : newValue)
+                                                                item.MenuStepAlarm[index2] = valueToSave
+                                                            }
+                                                        }
+                                                    }
+                                                )) {
+                                                    Text("None").tag(0) // tag 类型必须是 Int
+                                                    ForEach(1...180, id: \.self) { minute in
+                                                        Text("\(minute) min").tag(minute)
+                                                    }
+                                                }
+                                                .pickerStyle(.wheel)
+                                                .frame(width: 200, height: 120) // 限制大小
+                                            }
+                                            // 5. 强制显示为小气泡
+                                            .presentationCompactAdaptation(.popover)
+                                        }
+                                        
+                                        Spacer()
+                                    }
+                                    .padding(.vertical, 2)
+                                }
                             }
+                            
                         }
                     } else {
                         Text("Can't find the corresponding materials")
@@ -282,7 +635,73 @@ struct CardBack: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 20)
+            .padding(cardSize.width * 0.08)
+        }
+        .photosPicker(isPresented: $showStepPhotoPicker, selection: $selectedStepPhotoItem, matching: .images)
+        .onChange(of: selectedStepPhotoItem) { oldItem, newItem in
+            // 确保有点选 item 且知道是哪一行
+            guard let newItem, let index = targetStepIndex, let item = currentMenuItem else { return }
+            
+            Task {
+                // 异步加载图片数据
+                if let data = try? await newItem.loadTransferable(type: Data.self) {
+                    // 回到主线程更新 UI/数据
+                    await MainActor.run {
+                        // 安全检查防止数组越界（防止在打开Picker期间这行被删了）
+                        if index < item.MenuStepImageData.count {
+                            // 动画保存
+                            withAnimation {
+                                item.MenuStepImageData[index] = data
+                            }
+                        }
+                    }
+                }
+                // 重置选中状态，以便下次可以选同一张图
+                selectedStepPhotoItem = nil
+                targetStepIndex = nil
+            }
+        }
+    }
+    
+    private func insertMaterialItem(at index: Int, for item: MenuItems) {
+        withAnimation {
+            let safeIndex = min(index, item.MenuMaterialNames.count)
+            
+            item.MenuMaterialNames.insert("None", at: safeIndex)
+            item.MenuMaterialCounts.insert("None", at: safeIndex)
+            item.MenuMaterialComments.insert("None", at: safeIndex)
+        }
+    }
+
+    private func deleteMaterialItem(at index: Int, for item: MenuItems) {
+        withAnimation {
+            // 只有当数组不为空且索引有效时才删除
+            if index < item.MenuMaterialNames.count {
+                item.MenuMaterialNames.remove(at: index)
+                item.MenuMaterialCounts.remove(at: index)
+                item.MenuMaterialComments.remove(at: index)
+            }
+        }
+    }
+    
+    private func insertStepItem(at index: Int, for item: MenuItems) {
+        withAnimation {
+            let safeIndex = min(index, item.MenuSteps.count)
+            
+            item.MenuSteps.insert("None", at: safeIndex)
+            item.MenuStepAlarm.insert(nil, at: safeIndex)
+            item.MenuStepImageData.insert(nil, at: safeIndex)
+        }
+    }
+
+    private func deleteStepItem(at index: Int, for item: MenuItems) {
+        withAnimation {
+            // 只有当数组不为空且索引有效时才删除
+            if index < item.MenuSteps.count {
+                item.MenuSteps.remove(at: index)
+                item.MenuStepAlarm.remove(at: index)
+                item.MenuStepImageData.remove(at: index)
+            }
         }
     }
 }
@@ -290,6 +709,8 @@ struct CardBack: View {
 
 struct FlipCardView:View {
     @Binding var currentIndex: Int
+    
+    var cardSize: CGSize
     
     @State private var flipped = false
     @State private var rotation = 0.0
@@ -304,7 +725,7 @@ struct FlipCardView:View {
     
     @State private var showingDeletePageConfirm = false
     @State private var deletePulse = false
-    @State private var isEditingMenu = false
+    @Binding var isEditingMenu:Bool
     @State private var isSavingEditingCardFront = false
     @State private var isSavingEditingCardBack = false
     
@@ -322,7 +743,7 @@ struct FlipCardView:View {
                             .font(.title2)
                             .foregroundColor(.red)
                             .padding()
-                            .glassEffect()
+                            .conditionalGlassEffect(strokeColor: .red, overlayLineWidth: 12)
                             .opacity(min(max((-verticalOffset) / 120, 0), 1))
                             .scaleEffect(0.8 + 0.2 * min(max((-verticalOffset) / 120, 0), 1))
                             .scaleEffect(deletePulse ? 1.3 : 1.0)
@@ -352,7 +773,7 @@ struct FlipCardView:View {
                                 .font(.title2)
                                 .foregroundColor(.blue)
                                 .padding()
-                                .glassEffect()
+                                .conditionalGlassEffect(strokeColor: .blue, overlayLineWidth: 12)
                                 .opacity(min(max(verticalOffset / 120, 0), 1))
                                 .scaleEffect(0.8 + 0.2 * min(max(verticalOffset / 120, 0), 1))
                                 .scaleEffect(isEditingMenu ? 1.3 : 1.0)
@@ -361,22 +782,30 @@ struct FlipCardView:View {
                         .padding(.top, 20)
                     } else {
                         Button {
-                            isEditingMenu = true
+                            isEditingMenu = false
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                baseVerticalOffset = 0
+                                verticalOffset = 0
+                                baseHorizontalOffset = 0
+                                horizontalOffset = 0
+                                isEditingMenu = false
+                            }
                         } label: {
                             VStack {
-                                Label("Editing", systemImage: "wrench.adjustable")
+                                Label("Done", systemImage: "checkmark")
                                     .font(.title2)
                                     .foregroundColor(.blue)
                                     .background(Color.clear)
                                     .padding()
-                                    .glassEffect()
+                                    .conditionalGlassEffect(strokeColor: .blue, overlayLineWidth: 12)
                                     .opacity(min(max(verticalOffset / 120, 0), 1))
                                     .scaleEffect(0.8 + 0.2 * min(max(verticalOffset / 120, 0), 1))
                                 
-                                Text("Long tap to edit the photo.")
+                                Label("Long tap to edit the photo.", systemImage: "lightbulb")
                                     .font(.footnote)
                                     .foregroundColor(.secondary)
                                     .background(Color.clear)
+                                    .opacity(min(max(verticalOffset / 120, 0), 1))
                             }
                         }
                         .padding(.top, 20)
@@ -388,15 +817,16 @@ struct FlipCardView:View {
             
             ZStack {
                 // 卡片正面
-                CardFront(currentIndex:$currentIndex, isEditingMenu:$isEditingMenu)
+                CardFront(currentIndex:$currentIndex, isEditingMenu:$isEditingMenu, cardSize:cardSize)
                     .opacity(flipped ? 0 : 1)
                     .rotation3DEffect(.degrees(rotation), axis: (x: 0, y: 1, z: 0))
 
                 // 卡片背面
-                CardBack(currentIndex:$currentIndex)
+                CardBack(currentIndex:$currentIndex, isEditingMenu:$isEditingMenu, cardSize:cardSize)
                     .opacity(flipped ? 1 : 0)
                     .rotation3DEffect(.degrees(rotation + 180), axis: (x: 0, y: 1, z: 0))
             }
+            .shadow(color: Color.primary.opacity(0.3), radius: 20, x: 0, y: 0)
             .offset(x: horizontalOffset, y: verticalOffset)
             .gesture(
                 DragGesture()
@@ -413,8 +843,11 @@ struct FlipCardView:View {
                             withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
                                 baseVerticalOffset = -120
                                 verticalOffset = -120
+                                baseHorizontalOffset = 0
+                                horizontalOffset = 0
                             }
                             HapticManager.shared.lightImpact()
+                            isEditingMenu = false
                         }
                         
                         // ---- 向上滑更远 —— Delete ----
@@ -423,7 +856,11 @@ struct FlipCardView:View {
                             withAnimation(.easeOut(duration: 0.25)) {
                                 baseVerticalOffset = -1000
                                 verticalOffset = -1000
+                                baseHorizontalOffset = 0
+                                horizontalOffset = 0
                             }
+                            
+                            isEditingMenu = false
 
                             // 等待动画完成后再执行删除动作
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -446,7 +883,7 @@ struct FlipCardView:View {
                         }
                         
                         // ---- 向下滑 —— Edit ----
-                        else if verticalOffset > 150 && verticalOffset < 200 {
+                        else if verticalOffset > 130 && verticalOffset < 180 {
                             // 停在刚好露出 Edit 按钮的位置
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                 baseVerticalOffset = 120
@@ -458,7 +895,7 @@ struct FlipCardView:View {
                         }
                         
                         // ---- 向下滑更远 —— Edit ----
-                        else if verticalOffset > 200 {
+                        else if verticalOffset > 180 {
                             // 停在刚好露出 Edit 按钮的位置
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                 baseVerticalOffset = 120
@@ -474,12 +911,14 @@ struct FlipCardView:View {
                         else if horizontalOffset > 120 && currentIndex > 0 {
                             currentIndex -= 1
                             HapticManager.shared.lightImpact()
+                            isEditingMenu = false
                         }
                         
                         // ---- 向左滑 —— 下一页 ----
                         else if horizontalOffset < -120 && currentIndex < menuItems.count-1 {
                             // 向左滑动，下一页
                             currentIndex += 1
+                            isEditingMenu = false
                         }
                         
                         // ---- 回弹到中心 ----
@@ -501,17 +940,20 @@ struct FlipCardView:View {
                 }
             }
         }
-        .frame(width: 300, height: 500)
+        .frame(width: cardSize.width, height: cardSize.height)
+//        .frame(width: 360, height: 600)
 //        .frame(width: 600, height: 800)
         .background(Color.clear)
         .onChange(of: currentIndex) { oldValue, newValue in
             let direction: CGFloat = newValue > oldValue ? 1 : -1
             
             // 新卡片先从屏幕侧面开始
-            horizontalOffset = 400 * direction
+//            horizontalOffset = 400 * direction
+            horizontalOffset = (cardSize.width * 1.5) * direction
             
             // 重置翻转状态
             flipped = false
+            isEditingMenu = false
             rotation = 0
             
             // 垂直位置归零
@@ -586,6 +1028,7 @@ struct BottomSwitcher: View {
                     .background(Color.clear) // 透明背景
                     .clipShape(Circle())
             }
+            .padding(.leading, 10)
             .disabled(true) // 禁用点击
             .allowsHitTesting(false) // 禁止触摸事件
             
@@ -631,6 +1074,7 @@ struct BottomSwitcher: View {
                         MenuMaterialCounts: [],
                         MenuMaterialComments: [],
                         MenuSteps: [],
+                        MenuStepAlarm: [],
                         MenuStepImageData: [nil],
                         Cookingtimes: 0,
                         MeanCookingTime: 0
@@ -655,11 +1099,14 @@ struct BottomSwitcher: View {
                     .font(.title2)
                     .bold()
                     .foregroundColor(.blue)
-                    .frame(width: 44, height: 44)
-                    .background(Color.clear)
-                    .clipShape(Circle())
+//                    .frame(width: 44, height: 44)
                     .padding(.horizontal, 1)
             }
+            .frame(width: 44, height: 44)
+            .buttonStyle(PlainButtonStyle())
+            .background(.clear)
+            .conditionalGlassEffect(strokeColor: .blue, overlayLineWidth: 12)
+            .padding(.trailing, 10)
             
             Spacer()
         }
@@ -725,6 +1172,7 @@ struct ContentView: View {
     @State private var totalPages: Int = 0
     
     @State private var isAddingMenu: Bool = false
+    @State private var isEditingMenu = false
     
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -734,36 +1182,63 @@ struct ContentView: View {
 //    }
     
     var body: some View {
-        ZStack {
-            VStack {
-                // 将 Label 放置在 VStack 的顶部
-                Label("SelfMenu", systemImage: "book")
-                    .font(.default)
-                    .foregroundColor(.secondary)
-                    .padding(8) // 添加一些内边距
-                    .background(.thinMaterial) // 使用半透明材质帮助观察
-                    .cornerRadius(8)
-                
-                Spacer() // 将 Label 顶到顶部
-            }
-            // 使用负数 offset 将整个 VStack 向上移动
-            // 确保偏移量足够大，足以推入灵动岛/刘海下方
-            .offset(y: -50) // *** 关键步骤：负数偏移量 ***
-            .frame(maxWidth: .infinity, alignment: .top)
+        GeometryReader { geometry in
+            let cardWidth = geometry.size.width * 0.8
+            let cardHeight = geometry.size.height * 0.7
+            let cardSize = CGSize(width: cardWidth, height: cardHeight)
             
-            VStack {
-                Spacer()
-                
-                if !menuItems.isEmpty {
-                    FlipCardView(currentIndex:$currentIndex)
+            ZStack {
+                VStack {
+                    // 将 Label 放置在 VStack 的顶部
+                    Label("SelfMenu", systemImage: "book")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .padding(8) // 添加一些内边距
+                        .background(.thinMaterial) // 使用半透明材质帮助观察
+                        .cornerRadius(8)
+                    
+                    Spacer() // 将 Label 顶到顶部
                 }
+                // 使用负数 offset 将整个 VStack 向上移动
+                // 确保偏移量足够大，足以推入灵动岛/刘海下方
+                .offset(y: -50) // *** 关键步骤：负数偏移量 ***
+                .frame(maxWidth: .infinity, alignment: .top)
                 
-                Spacer()
-                
-                BottomSwitcher(currentIndex:$currentIndex, totalPages:$totalPages, isAddingMenu:$isAddingMenu)
+                VStack {
+                    Spacer()
+                    
+                    if !menuItems.isEmpty {
+                        FlipCardView(currentIndex:$currentIndex, cardSize:cardSize, isEditingMenu:$isEditingMenu)
+                            .padding(.top, geometry.size.height*0.02)
+                            .frame(width: cardWidth, height: cardHeight)
+                    }
+                    
+                    Spacer()
+                    
+                    if !isEditingMenu {
+                        BottomSwitcher(currentIndex:$currentIndex, totalPages:$totalPages, isAddingMenu:$isAddingMenu)
+                            .padding(.trailing, geometry.size.width*0.01)
+                            .padding(.bottom, geometry.size.height*0.03)
+                    } else {
+                        Button(action: {}) {
+                            Image(systemName: "list.bullet")
+                                .font(.body.weight(.medium))
+                                .foregroundColor(.clear) // 完全透明
+                                .frame(width: 44, height: 44)
+                                .background(Color.clear) // 透明背景
+                                .clipShape(Circle())
+                        }
+                        .padding(.trailing, geometry.size.width*0.01)
+                        .padding(.bottom, geometry.size.height*0.03)
+                        .disabled(true) // 禁用点击
+                        .allowsHitTesting(false) // 禁止触摸事件
+                    }
+                    
+                }
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
-        .ignoresSafeArea(.container, edges: .top)
+        .ignoresSafeArea(.container, edges: .all)
         .onAppear {
             if initialSelfMenuItems {
                 initialFirstSelfMenu()
@@ -789,6 +1264,7 @@ struct ContentView: View {
             MenuMaterialCounts: ["500g", "300g"],
             MenuMaterialComments: ["None", "None"],
             MenuSteps: ["Cook", "Bake"],
+            MenuStepAlarm: [5, nil],
             MenuStepImageData:[nil, nil],
             Cookingtimes: 0,
             MeanCookingTime: 0
@@ -809,6 +1285,7 @@ struct ContentView: View {
             MenuMaterialCounts: ["1Bags", "300g", "100g"],
             MenuMaterialComments: ["None", "None", "None"],
             MenuSteps: ["Boil", "Cook", "Stir"],
+            MenuStepAlarm: [nil, 5, nil],
             MenuStepImageData:[nil, nil, nil],
             Cookingtimes: 0,
             MeanCookingTime: 0
