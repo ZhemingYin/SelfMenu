@@ -6,19 +6,97 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		57A83AB62ED8EA20009B754B /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 57A83AB52ED8EA20009B754B /* WidgetKit.framework */; };
+		57A83AB82ED8EA20009B754B /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 57A83AB72ED8EA20009B754B /* SwiftUI.framework */; };
+		57A83AC32ED8EA22009B754B /* CookingActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 57A83AB32ED8EA20009B754B /* CookingActivityExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		57A83AC12ED8EA22009B754B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 57DFA3FE2ECE6DFE00288D93 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 57A83AB22ED8EA20009B754B;
+			remoteInfo = CookingActivityExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		57A83AC82ED8EA22009B754B /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				57A83AC32ED8EA22009B754B /* CookingActivityExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		57A83AB32ED8EA20009B754B /* CookingActivityExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CookingActivityExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		57A83AB52ED8EA20009B754B /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = /System/Library/Frameworks/WidgetKit.framework; sourceTree = "<absolute>"; };
+		57A83AB72ED8EA20009B754B /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = /System/Library/Frameworks/SwiftUI.framework; sourceTree = "<absolute>"; };
 		57DFA4062ECE6DFE00288D93 /* SelfMenu.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SelfMenu.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		57A83AC42ED8EA22009B754B /* Exceptions for "CookingActivity" folder in "CookingActivityExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 57A83AB22ED8EA20009B754B /* CookingActivityExtension */;
+		};
+		57A83ACA2ED8EAEA009B754B /* Exceptions for "SelfMenu" folder in "SelfMenu" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 57DFA4052ECE6DFE00288D93 /* SelfMenu */;
+		};
+		57A83ACE2ED8EBA7009B754B /* Exceptions for "SelfMenu" folder in "CookingActivityExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				CookingAttributes.swift,
+			);
+			target = 57A83AB22ED8EA20009B754B /* CookingActivityExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		57A83AB92ED8EA20009B754B /* CookingActivity */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				57A83AC42ED8EA22009B754B /* Exceptions for "CookingActivity" folder in "CookingActivityExtension" target */,
+			);
+			path = CookingActivity;
+			sourceTree = "<group>";
+		};
 		57DFA4082ECE6DFE00288D93 /* SelfMenu */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				57A83ACA2ED8EAEA009B754B /* Exceptions for "SelfMenu" folder in "SelfMenu" target */,
+				57A83ACE2ED8EBA7009B754B /* Exceptions for "SelfMenu" folder in "CookingActivityExtension" target */,
+			);
 			path = SelfMenu;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		57A83AB02ED8EA20009B754B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				57A83AB82ED8EA20009B754B /* SwiftUI.framework in Frameworks */,
+				57A83AB62ED8EA20009B754B /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		57DFA4032ECE6DFE00288D93 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -29,10 +107,21 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		57A83AB42ED8EA20009B754B /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				57A83AB52ED8EA20009B754B /* WidgetKit.framework */,
+				57A83AB72ED8EA20009B754B /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		57DFA3FD2ECE6DFE00288D93 = {
 			isa = PBXGroup;
 			children = (
 				57DFA4082ECE6DFE00288D93 /* SelfMenu */,
+				57A83AB92ED8EA20009B754B /* CookingActivity */,
+				57A83AB42ED8EA20009B754B /* Frameworks */,
 				57DFA4072ECE6DFE00288D93 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +130,7 @@
 			isa = PBXGroup;
 			children = (
 				57DFA4062ECE6DFE00288D93 /* SelfMenu.app */,
+				57A83AB32ED8EA20009B754B /* CookingActivityExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,6 +138,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		57A83AB22ED8EA20009B754B /* CookingActivityExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 57A83AC52ED8EA22009B754B /* Build configuration list for PBXNativeTarget "CookingActivityExtension" */;
+			buildPhases = (
+				57A83AAF2ED8EA20009B754B /* Sources */,
+				57A83AB02ED8EA20009B754B /* Frameworks */,
+				57A83AB12ED8EA20009B754B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				57A83AB92ED8EA20009B754B /* CookingActivity */,
+			);
+			name = CookingActivityExtension;
+			packageProductDependencies = (
+			);
+			productName = CookingActivityExtension;
+			productReference = 57A83AB32ED8EA20009B754B /* CookingActivityExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		57DFA4052ECE6DFE00288D93 /* SelfMenu */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 57DFA4132ECE6DFF00288D93 /* Build configuration list for PBXNativeTarget "SelfMenu" */;
@@ -55,10 +167,12 @@
 				57DFA4022ECE6DFE00288D93 /* Sources */,
 				57DFA4032ECE6DFE00288D93 /* Frameworks */,
 				57DFA4042ECE6DFE00288D93 /* Resources */,
+				57A83AC82ED8EA22009B754B /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				57A83AC22ED8EA22009B754B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				57DFA4082ECE6DFE00288D93 /* SelfMenu */,
@@ -80,6 +194,9 @@
 				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
+					57A83AB22ED8EA20009B754B = {
+						CreatedOnToolsVersion = 26.0.1;
+					};
 					57DFA4052ECE6DFE00288D93 = {
 						CreatedOnToolsVersion = 26.0.1;
 					};
@@ -100,11 +217,19 @@
 			projectRoot = "";
 			targets = (
 				57DFA4052ECE6DFE00288D93 /* SelfMenu */,
+				57A83AB22ED8EA20009B754B /* CookingActivityExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		57A83AB12ED8EA20009B754B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		57DFA4042ECE6DFE00288D93 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -115,6 +240,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		57A83AAF2ED8EA20009B754B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		57DFA4022ECE6DFE00288D93 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -124,7 +256,99 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		57A83AC22ED8EA22009B754B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 57A83AB22ED8EA20009B754B /* CookingActivityExtension */;
+			targetProxy = 57A83AC12ED8EA22009B754B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		57A83AC62ED8EA22009B754B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8KZ6L6PV78;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CookingActivity/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = CookingActivity;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vmir50.SelfMenu.CookingActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				XROS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		57A83AC72ED8EA22009B754B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8KZ6L6PV78;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CookingActivity/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = CookingActivity;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vmir50.SelfMenu.CookingActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				XROS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
 		57DFA4112ECE6DFF00288D93 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -254,6 +478,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SelfMenu/Info.plist;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -298,6 +524,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SelfMenu/Info.plist;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -332,6 +560,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		57A83AC52ED8EA22009B754B /* Build configuration list for PBXNativeTarget "CookingActivityExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				57A83AC62ED8EA22009B754B /* Debug */,
+				57A83AC72ED8EA22009B754B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		57DFA4012ECE6DFE00288D93 /* Build configuration list for PBXProject "SelfMenu" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

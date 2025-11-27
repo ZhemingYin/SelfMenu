@@ -699,6 +699,16 @@ struct CardBack: View {
                 elapsedSeconds = Int(Date().timeIntervalSince(startTime))
             }
         }
+        // 监听来自灵动岛的关闭指令
+        .onOpenURL { url in
+            if url.absoluteString == "selfmenu://stopCooking" {
+                // 如果收到停止指令，且当前正在烹饪，则结束
+                if isCooking, let item = currentMenuItem {
+                    print("Received stop command from Dynamic Island")
+                    finishCooking(for: item)
+                }
+            }
+        }
     }
     
     private func insertMaterialItem(at index: Int, for item: MenuItems) {
