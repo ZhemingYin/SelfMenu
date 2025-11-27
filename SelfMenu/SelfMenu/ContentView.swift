@@ -241,6 +241,12 @@ struct CardBack: View {
     @State private var targetStepIndex: Int? = nil
     @State private var activeAlarmIndex: Int? = nil
     
+    // 计时器状态
+    @State private var isCooking = false // 是否正在计时
+    @State private var cookingStartTime: Date? = nil // 开始时间点
+    @State private var elapsedSeconds: Int = 0 // 界面显示的流逝时间
+    @State private var timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect() // 计时器发布者
+    
     var body: some View {
         ZStack {
             // 背景材质 + 圆角
@@ -266,6 +272,57 @@ struct CardBack: View {
             ScrollView {
                 
                 VStack(alignment: .leading) {
+                    if !isEditingMenu {
+                        if let item = currentMenuItem {
+                            HStack(spacing: 10) {
+                                if !isCooking {
+                                    Label("\(item.Cookingtimes)", systemImage: "flame.fill")
+                                        .foregroundColor(.red)
+                                    Label(formatTime(item.MeanCookingTime), systemImage: "clock.arrow.circlepath")
+                                        .foregroundColor(.orange)
+                                }
+                                
+                                Spacer()
+                                
+                                Button {
+                                    if isCooking {
+                                        finishCooking(for: item)
+                                    } else {
+                                        startCooking()
+                                    }
+                                } label: {
+                                    HStack {
+                                        Label({
+                                            isCooking ? "Stop" : "Start"
+                                        }(), systemImage: {
+                                            isCooking ? "stop.fill" : "play"
+                                        }())
+                                        .bold()
+                                        
+                                        if isCooking {
+                                            // 正在计时：显示动态时间
+                                            Text(formatTime(elapsedSeconds))
+                                                .padding(.leading, 2)
+                                                .bold()
+                                        }
+                                    }
+                                    .foregroundColor(isCooking ? .red : .blue)
+                                }
+                                .padding(10)
+                                .buttonStyle(.plain)
+                                .overlay(
+                                    Capsule()
+                                        .stroke(isCooking ? Color.red : Color.blue, lineWidth: 2)
+                                        .padding(2)
+                                )
+                            }
+                        }
+                        
+                        Divider()
+                            .foregroundStyle(.blue)
+                            .padding(.vertical, 5)
+                    }
+                    
                     if let item = currentMenuItem {
                         Text("Materials:")
                             .font(.title2)
@@ -442,55 +499,29 @@ struct CardBack: View {
                             let stepImageData = item.MenuStepImageData[index2]
                             
                             if !isEditingMenu {
-                                let indexText = Text("\(index2 + 1). ").font(.title3).bold()
-                                            
-                                // B. 正文 (普通)
-                                let bodyText = Text(step).font(.title3)
                                 
-                                // C. 闹钟标签 (如果有)
-                                var combinedText: Text {
-                                    if let alarm = stepAlarm, alarm > 0 {
-                                        // 创建一个带图标的时间文本
-                                        let alarmIcon = Text(Image(systemName: "timer")).font(.caption).foregroundColor(.orange)
-                                        let alarmTime = Text(" \(alarm)m").font(.caption).bold().foregroundColor(.orange)
+                                VStack(alignment: .leading) {
+                                    HStack {
+                                        Text("\(index2 + 1). ")
+                                            .font(.title3)
+                                            .foregroundColor(.primary)
                                         
-                                        // 拼接逻辑：序号 + 正文 + (空格) + 图标 + 时间
-                                        // 注意：这里加了几个空格 "   " 让时间稍微隔开一点
-                                        return indexText + bodyText + Text("   ") + alarmIcon + alarmTime
-                                    } else {
-                                        return indexText + bodyText
+                                        Text("\(step)")
+                                            .font(.title3)
+                                            .foregroundColor(.primary)
+                                        
+                                        Spacer()
+                                        
+                                        if let stepAlarm = stepAlarm, stepAlarm > 0 { // 只有非 nil 且大于 0 才显示
+                                            Label("\(stepAlarm)m", systemImage: "timer")
+                                                .padding(3)
+                                                .background(Color.orange.opacity(0.1))
+                                                .foregroundColor(.orange)
+                                                .cornerRadius(8)
+                                        }
+                                        
                                     }
-                                }
-                                
-                                VStack {
-//                                    HStack {
-//                                        Text("\(index2 + 1). ")
-//                                            .font(.title3)
-//                                            .foregroundColor(.primary)
-//                                        
-//                                        Text("\(step)")
-//                                            .font(.title3)
-//                                            .foregroundColor(.primary)
-//                                        
-//                                        Spacer()
-//                                        
-//                                        if let stepAlarm = stepAlarm, stepAlarm > 0 { // 只有非 nil 且大于 0 才显示
-//                                            Label("\(stepAlarm)m", systemImage: "timer")
-//                                                .padding(1)
-//                                                .background(Color.orange.opacity(0.1))
-//                                                .foregroundColor(.orange)
-//                                                .cornerRadius(8)
-//                                        }
-//                                        
-//                                    }
-//                                    .padding(1)
-                                    
-                                    combinedText
-                                        .foregroundColor(.primary)
-                                        .lineSpacing(4) // 增加行间距，阅读更舒适
-                                        .frame(maxWidth: .infinity, alignment: .leading) // 左右撑满，靠左对齐
-                                        .fixedSize(horizontal: false, vertical: true) // 允许垂直方向无限延伸(换行)
-                                        .padding(1)
+                                    .padding(1)
                                     
                                     if let data = stepImageData, let uiImage = UIImage(data: data) {
                                         Image(uiImage: uiImage)
@@ -661,6 +692,13 @@ struct CardBack: View {
                 targetStepIndex = nil
             }
         }
+        .onReceive(timer) { _ in
+            // 只有在“正在烹饪”且“有开始时间”的情况下才更新
+            if isCooking, let startTime = cookingStartTime {
+                // 计算：当前时间 - 开始时间 = 经过的秒数
+                elapsedSeconds = Int(Date().timeIntervalSince(startTime))
+            }
+        }
     }
     
     private func insertMaterialItem(at index: Int, for item: MenuItems) {
@@ -702,6 +740,50 @@ struct CardBack: View {
                 item.MenuStepAlarm.remove(at: index)
                 item.MenuStepImageData.remove(at: index)
             }
+        }
+    }
+    
+    private func startCooking() {
+        isCooking = true
+        cookingStartTime = Date()
+        elapsedSeconds = 0
+    }
+
+    // 2. 结束计时并保存数据
+    private func finishCooking(for item: MenuItems) {
+        guard let startTime = cookingStartTime else { return }
+        
+        let duration = Int(Date().timeIntervalSince(startTime))
+        
+        updateCookingStats(for: item, newDuration: duration)
+        
+        // 重置状态
+        isCooking = false
+        cookingStartTime = nil
+        elapsedSeconds = 0
+    }
+
+    // 3. 核心算法：更新平均时间和次数
+    private func updateCookingStats(for item: MenuItems, newDuration: Int) {
+        let oldTotalTime = item.MeanCookingTime * item.Cookingtimes
+        
+        item.Cookingtimes += 1
+        
+        let newTotalTime = oldTotalTime + newDuration
+        item.MeanCookingTime = newTotalTime / item.Cookingtimes
+        
+    }
+
+    // 4. 格式化时间显示 (秒 -> MM:SS 或 HH:MM:SS)
+    private func formatTime(_ totalSeconds: Int) -> String {
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+        
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            return String(format: "%02d:%02d", minutes, seconds)
         }
     }
 }
