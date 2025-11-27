@@ -495,8 +495,8 @@ struct CardBack: View {
                         
                         ForEach(item.MenuSteps.indices, id: \.self) { index2 in
                             let step = item.MenuSteps[index2]
-                            let stepAlarm = item.MenuStepAlarm[index2]
-                            let stepImageData = item.MenuStepImageData[index2]
+                            let stepAlarm = (index2 < item.MenuStepAlarm.count) ? item.MenuStepAlarm[index2] : nil
+                            let stepImageData = (index2 < item.MenuStepImageData.count) ? item.MenuStepImageData[index2] : nil
                             
                             if !isEditingMenu {
                                 
@@ -1259,7 +1259,8 @@ struct PageControl: UIViewRepresentable {
 }
 
 struct ContentView: View {
-    @State private var initialSelfMenuItems = true
+//    @State private var initialSelfMenuItems = true
+    @AppStorage("initialSelfMenuItems") private var initialSelfMenuItems = true
     @State private var currentIndex: Int = 0
     @State private var totalPages: Int = 0
     
@@ -1284,10 +1285,15 @@ struct ContentView: View {
                     // 将 Label 放置在 VStack 的顶部
                     Label("SelfMenu", systemImage: "book")
                         .font(.footnote)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.orange)
                         .padding(8) // 添加一些内边距
-                        .background(.thinMaterial) // 使用半透明材质帮助观察
+//                        .background(.thinMaterial) // 使用半透明材质帮助观察
                         .cornerRadius(8)
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.orange, lineWidth: 2)
+                                .padding(2)
+                        )
                     
                     Spacer() // 将 Label 顶到顶部
                 }
