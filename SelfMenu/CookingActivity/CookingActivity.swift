@@ -32,7 +32,8 @@ struct CookingActivity: Widget {
                 
                 // 右边：自动刷新的计时器
                 // timerInterval: 传入 开始时间...当前时间，系统会自动显示 0:01, 0:02...
-                Text(timerInterval: context.state.startTime...Date(), countsDown: false)
+                Text(context.state.startTime, style: .timer)
+                    .multilineTextAlignment(.trailing)
                     .font(.title)
                     .bold()
                     .foregroundColor(.orange)
@@ -59,7 +60,7 @@ struct CookingActivity: Widget {
                                     .foregroundStyle(.primary)
     //                                .padding(.bottom, 2)
                                 
-                                Text(timerInterval: context.state.startTime...Date(), countsDown: false)
+                                Text(context.state.startTime, style: .timer)
                                     .font(.system(size: 30))
                                     .bold()
                                     .foregroundColor(.orange)
@@ -88,7 +89,8 @@ struct CookingActivity: Widget {
                 
             } compactTrailing: {
                 // C. 收起状态 - 右边 (显示计时)
-                Text(timerInterval: context.state.startTime...Date(), countsDown: false)
+                Text(context.state.startTime, style: .timer)
+                    .multilineTextAlignment(.trailing)
                     .foregroundColor(.orange)
                     .frame(width: 40) // 限制宽度
                     .padding(.trailing, 3)

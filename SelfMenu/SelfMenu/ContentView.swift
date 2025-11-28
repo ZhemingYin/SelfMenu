@@ -11,6 +11,7 @@ import RealityKit
 import Combine
 import PhotosUI
 import UIKit
+import ActivityKit
 
 
 struct ConditionalGlassEffect: ViewModifier {
@@ -77,6 +78,11 @@ class HapticManager {
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.warning)
     }
+}
+
+struct CookingPersistence {
+    static let menuIDKey = "CurrentCookingMenuID"
+    static let startTimeKey = "CurrentCookingStartTime"
 }
 
 // MARK: - 卡片正面
@@ -229,6 +235,8 @@ struct CardBack: View {
     
     var cardSize: CGSize
     
+    @Environment(\.scenePhase) var scenePhase
+    
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \MenuItems.MenuIndex) private var menuItems: [MenuItems]
@@ -245,7 +253,9 @@ struct CardBack: View {
     @State private var isCooking = false // 是否正在计时
     @State private var cookingStartTime: Date? = nil // 开始时间点
     @State private var elapsedSeconds: Int = 0 // 界面显示的流逝时间
-    @State private var timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect() // 计时器发布者
+    @State private var timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    
+    @State private var currentActivity: Activity<CookingAttributes>? = nil
     
     var body: some View {
         ZStack {
@@ -302,6 +312,7 @@ struct CardBack: View {
                                         if isCooking {
                                             // 正在计时：显示动态时间
                                             Text(formatTime(elapsedSeconds))
+                                                .contentTransition(.numericText())
                                                 .padding(.leading, 2)
                                                 .bold()
                                         }
@@ -709,6 +720,15 @@ struct CardBack: View {
                 }
             }
         }
+        .onAppear {
+            restoreCookingState()
+        }
+        // 同时也建议监听 App 从后台回到前台的事件 (ScenePhase)，体验更丝滑
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            if newPhase == .active {
+                restoreCookingState()
+            }
+        }
     }
     
     private func insertMaterialItem(at index: Int, for item: MenuItems) {
@@ -757,6 +777,41 @@ struct CardBack: View {
         isCooking = true
         cookingStartTime = Date()
         elapsedSeconds = 0
+        
+        if let item = currentMenuItem {
+            UserDefaults.standard.set(item.id.uuidString, forKey: CookingPersistence.menuIDKey)
+            UserDefaults.standard.set(cookingStartTime, forKey: CookingPersistence.startTimeKey)
+        }
+        
+        // 检查设备是否支持
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            print("Live Activities are NOT enabled! Check Info.plist or Settings.")
+            return
+        }
+
+        // 准备数据
+        let attributes = CookingAttributes(totalTime: 0)
+        let contentState = CookingAttributes.ContentState(
+            startTime: Date(),
+            menuName: currentMenuItem?.MenuName ?? "Food"
+        )
+        
+        // 兼容 iOS 16.2+ 的写法
+        let activityContent = ActivityContent(state: contentState, staleDate: nil)
+        
+        do {
+            // 请求启动
+            currentActivity = try Activity.request(
+                attributes: attributes,
+                content: activityContent,
+                pushType: nil
+            )
+            print("Success! Live Activity ID: \(currentActivity?.id ?? "Unknown")")
+        } catch {
+            // 这里会打印具体的报错原因
+            print("Error starting Live Activity: \(error.localizedDescription)")
+            print("Detailed Error: \(error)")
+        }
     }
 
     // 2. 结束计时并保存数据
@@ -767,10 +822,37 @@ struct CardBack: View {
         
         updateCookingStats(for: item, newDuration: duration)
         
+        UserDefaults.standard.removeObject(forKey: CookingPersistence.menuIDKey)
+        UserDefaults.standard.removeObject(forKey: CookingPersistence.startTimeKey)
+        
         // 重置状态
         isCooking = false
         cookingStartTime = nil
         elapsedSeconds = 0
+        currentActivity = nil
+        
+        Task {
+            // 1. 定义结束时的显示状态 (比如显示 "Done!")
+            let finalState = CookingAttributes.ContentState(
+                startTime: Date(),
+                menuName: "Done!"
+            )
+            
+            let finalContent = ActivityContent(state: finalState, staleDate: nil)
+            
+            // 2. 【关键】不要只用 currentActivity?.end()
+            // 而是遍历系统里属于这个 App 的所有活动，统统关掉。
+            // 这样即使 App 重启过，currentActivity 是 nil，也能关掉灵动岛。
+            for activity in Activity<CookingAttributes>.activities {
+                print("Terminating activity: \(activity.id)")
+                await activity.end(finalContent, dismissalPolicy: .immediate)
+            }
+            
+            // 3. 置空本地变量
+            await MainActor.run {
+                self.currentActivity = nil
+            }
+        }
     }
 
     // 3. 核心算法：更新平均时间和次数
@@ -794,6 +876,42 @@ struct CardBack: View {
             return String(format: "%d:%02d:%02d", hours, minutes, seconds)
         } else {
             return String(format: "%02d:%02d", minutes, seconds)
+        }
+    }
+    
+    private func restoreCookingState() {
+        // 检查是否有SelfMenu正在进行的 Live Activity
+        let activeActivities = Activity<CookingAttributes>.activities
+        
+        // 如果系统里没有任何活动在跑，说明可能已经结束了，或者用户在锁屏上划掉了
+        guard let activity = activeActivities.first else {
+            // 双重保险：如果系统里没活动，但 UserDefaults 里还有脏数据，顺便清理掉
+            UserDefaults.standard.removeObject(forKey: CookingPersistence.menuIDKey)
+            UserDefaults.standard.removeObject(forKey: CookingPersistence.startTimeKey)
+            isCooking = false
+            cookingStartTime = nil
+            elapsedSeconds = 0
+            currentActivity = nil
+            return
+        }
+        
+        // 2. 重新绑定 Activity 实例
+        // 这样点击 "Stop Cooking" 才能控制这个“死而复生”的活动
+        self.currentActivity = activity
+        
+        // 3. 恢复数据状态
+        if let savedStartTime = UserDefaults.standard.object(forKey: CookingPersistence.startTimeKey) as? Date,
+           let savedMenuIDString = UserDefaults.standard.string(forKey: CookingPersistence.menuIDKey),
+           let item = currentMenuItem { // 确保当前卡片就是正在做的那个菜
+            
+            // 只有当保存 ID 等于当前卡片 ID 时才恢复界面
+            // (防止你在做 Pizza，结果滑到了 Pasta 的卡片，Pasta 却显示正在做)
+            if item.id.uuidString == savedMenuIDString {
+                self.cookingStartTime = savedStartTime
+                self.isCooking = true
+                self.elapsedSeconds = Int(Date().timeIntervalSince(savedStartTime))
+                print("Restored cooking session from disk")
+            }
         }
     }
 }
@@ -1098,7 +1216,6 @@ struct FlipCardView:View {
 
 struct BottomSwitcher: View {
     @Binding var currentIndex: Int
-    @Binding var totalPages: Int
     
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -1127,7 +1244,7 @@ struct BottomSwitcher: View {
             Spacer()
             
             if !menuItems.isEmpty {
-                PageControl(currentPage: $currentIndex, numberOfPages: totalPages)
+                PageControl(currentPage: $currentIndex, numberOfPages: menuItems.count)
             } else {
                 Text("Tap here to add a new page")
                     .bold()
@@ -1262,7 +1379,7 @@ struct ContentView: View {
 //    @State private var initialSelfMenuItems = true
     @AppStorage("initialSelfMenuItems") private var initialSelfMenuItems = true
     @State private var currentIndex: Int = 0
-    @State private var totalPages: Int = 0
+//    @State private var totalPages: Int = 0
     
     @State private var isAddingMenu: Bool = false
     @State private var isEditingMenu = false
@@ -1298,8 +1415,7 @@ struct ContentView: View {
                     Spacer() // 将 Label 顶到顶部
                 }
                 // 使用负数 offset 将整个 VStack 向上移动
-                // 确保偏移量足够大，足以推入灵动岛/刘海下方
-                .offset(y: -50) // *** 关键步骤：负数偏移量 ***
+                .offset(y: 20)
                 .frame(maxWidth: .infinity, alignment: .top)
                 
                 VStack {
@@ -1314,7 +1430,7 @@ struct ContentView: View {
                     Spacer()
                     
                     if !isEditingMenu {
-                        BottomSwitcher(currentIndex:$currentIndex, totalPages:$totalPages, isAddingMenu:$isAddingMenu)
+                        BottomSwitcher(currentIndex:$currentIndex, isAddingMenu:$isAddingMenu)
                             .padding(.trailing, geometry.size.width*0.01)
                             .padding(.bottom, geometry.size.height*0.03)
                     } else {
@@ -1341,9 +1457,6 @@ struct ContentView: View {
             if initialSelfMenuItems {
                 initialFirstSelfMenu()
             }
-        }
-        .onChange(of: menuItems) { oldValue, newValue in
-            totalPages = newValue.count
         }
         .onChange(of: currentIndex) { oldValue, newValue in
             HapticManager.shared.lightImpact()
