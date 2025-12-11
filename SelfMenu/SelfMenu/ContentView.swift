@@ -47,11 +47,11 @@ struct ConditionalGlassEffect: ViewModifier {
         } else {
             content
                 .background(Color.clear)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        // 2. 在这里使用 strokeColor 变量
-                        .stroke(strokeColor, lineWidth: overlayLineWidth)
-                )
+//                .overlay(
+//                    RoundedRectangle(cornerRadius: 12)
+//                        // 2. 在这里使用 strokeColor 变量
+//                        .stroke(strokeColor, lineWidth: overlayLineWidth)
+//                )
         }
     }
 }
@@ -651,7 +651,7 @@ struct CardBack: View {
                         )
                 )
             
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 
                 VStack(alignment: .leading) {
                     if !isEditingMenu {
@@ -709,7 +709,8 @@ struct CardBack: View {
                             .bold()
                             .padding(.bottom, 2)
                         
-                        if isEditingMenu && item.MenuMaterialNames.isEmpty {
+                        if isEditingMenu {
+//                        if isEditingMenu && item.MenuMaterialNames.isEmpty {
                             HStack(spacing: 10) {
                                 Button {
                                     insertMaterialItem(at: 0, for: item)
@@ -860,7 +861,8 @@ struct CardBack: View {
                             .bold()
                             .padding(.bottom, 2)
                         
-                        if isEditingMenu && item.MenuSteps.isEmpty {
+                        if isEditingMenu {
+//                        if isEditingMenu && item.MenuSteps.isEmpty {
                             HStack(spacing: 10) {
                                 Button {
                                     insertStepItem(at: 0, for: item)

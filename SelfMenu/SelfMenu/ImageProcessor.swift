@@ -98,7 +98,7 @@ class AnalysisViewController: UIViewController {
     private func setupNavigationBar() {
         // 左侧：Cancel
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Cancel", style: .plain, target: self, action: #selector(cancelTapped))
-        let doneItem = UIBarButtonItem(title: "Done", style: .prominent, target: self, action: #selector(saveTapped))
+        let doneItem = UIBarButtonItem(title: "Done", style: .plain, target: self, action: #selector(saveTapped))
         doneItem.setTitleTextAttributes([.font: UIFont.boldSystemFont(ofSize: 17)], for: .normal)
         
         navigationItem.rightBarButtonItem = doneItem
