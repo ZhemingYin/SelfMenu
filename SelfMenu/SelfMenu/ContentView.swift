@@ -12,7 +12,29 @@ import Combine
 import PhotosUI
 import UIKit
 import ActivityKit
+import UserNotifications
+#if canImport(AlarmKit)
+import AlarmKit
+#endif
+import CryptoKit // 用于生成确定性 UUID
 
+
+extension UIDevice {
+    /// 判断是否是灵动岛机型
+    /// 灵动岛机型的顶部安全区域通常 >= 59
+    /// 刘海屏通常在 44-48 之间，旧机型更小
+    static var hasDynamicIsland: Bool {
+        guard let window = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap({ $0.windows })
+            .first(where: { $0.isKeyWindow })
+        else {
+            return false
+        }
+        // 51 是一个安全阈值，灵动岛通常是 59
+        return window.safeAreaInsets.top >= 50
+    }
+}
 
 struct ConditionalGlassEffect: ViewModifier {
     var strokeColor: Color = .red
@@ -85,6 +107,257 @@ struct CookingPersistence {
     static let startTimeKey = "CurrentCookingStartTime"
 }
 
+nonisolated struct CookingAlarmMetaData: AlarmMetadata {}
+
+extension UUID {
+    /// 根据字符串生成一个固定的 UUID
+    /// 只要输入字符串相同，返回的 UUID 永远相同
+    static func from(string: String) -> UUID {
+        // 1. 将字符串转为 Data
+        let inputData = Data(string.utf8)
+        
+        // 2. 使用 SHA256 哈希算法（生成 32 字节的数据）
+        let hashed = SHA256.hash(data: inputData)
+        
+        // 3. 截取前 16 个字节来构建 UUID
+        // (UUID 固定长度为 16 字节 / 128 位)
+        var uuidBytes = (
+            UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+            UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+            UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+            UInt8(0), UInt8(0), UInt8(0), UInt8(0)
+        )
+        
+        // 将 Hash 的前 16 位复制到 tuple 中
+        // 这是一个比较底层的内存操作，但在 Swift 中是安全的
+        hashed.withUnsafeBytes { buffer in
+            guard buffer.count >= 16 else { return }
+            let ptr = buffer.baseAddress!.assumingMemoryBound(to: UInt8.self)
+            uuidBytes.0 = ptr[0];  uuidBytes.1 = ptr[1];  uuidBytes.2 = ptr[2];  uuidBytes.3 = ptr[3]
+            uuidBytes.4 = ptr[4];  uuidBytes.5 = ptr[5];  uuidBytes.6 = ptr[6];  uuidBytes.7 = ptr[7]
+            uuidBytes.8 = ptr[8];  uuidBytes.9 = ptr[9];  uuidBytes.10 = ptr[10]; uuidBytes.11 = ptr[11]
+            uuidBytes.12 = ptr[12]; uuidBytes.13 = ptr[13]; uuidBytes.14 = ptr[14]; uuidBytes.15 = ptr[15]
+        }
+        
+        return UUID(uuid: uuidBytes)
+    }
+}
+
+class CookingActivityManager {
+    static let shared = CookingActivityManager()
+    
+    // 开启一个新的烹饪活动
+    func startCooking(menuName: String, menuID: UUID, totalTime: Int) {
+        // 检查是否已有这个ID在跑
+        if isCooking(menuID: menuID) { return }
+        
+        let attributes = CookingAttributes(totalTime: totalTime)
+        let contentState = CookingAttributes.ContentState(
+            startTime: Date(),
+            menuName: menuName,
+            menuID: menuID
+        )
+        
+        let activityContent = ActivityContent(state: contentState, staleDate: nil)
+        
+        do {
+            let _ = try Activity.request(
+                attributes: attributes,
+                content: activityContent,
+                pushType: nil
+            )
+        } catch {
+            print("Error starting activity: \(error.localizedDescription)")
+        }
+    }
+    
+    func stopCooking(menuID: UUID) async {
+        for activity in Activity<CookingAttributes>.activities {
+            if activity.content.state.menuID == menuID {
+                
+                let finalState = CookingAttributes.ContentState(
+                    startTime: activity.content.state.startTime,
+                    menuName: "Done!" as String,
+                    menuID: menuID
+                )
+                
+                let finalContent = ActivityContent(state: finalState, staleDate: nil)
+                
+                await activity.end(finalContent, dismissalPolicy: .immediate)
+                print("Stopped activity for menuID: \(menuID)")
+            }
+        }
+    }
+    
+    func isCooking(menuID: UUID) -> Bool {
+        return getActivity(for: menuID) != nil
+    }
+    
+    // 获取某个菜对应的 Activity 对象（用于获取开始时间）
+    func getActivity(for menuID: UUID) -> Activity<CookingAttributes>? {
+        return Activity<CookingAttributes>.activities.first {
+            $0.content.state.menuID == menuID
+        }
+    }
+}
+
+struct ImageEditorView: View {
+    var originalImage: UIImage
+    var onSave: (UIImage) -> Void // 保存回调
+    var onCancel: () -> Void      // 取消回调
+    
+    @State private var displayImage: UIImage
+    
+    init(image: UIImage, onSave: @escaping (UIImage) -> Void, onCancel: @escaping () -> Void) {
+        self.originalImage = image
+        _displayImage = State(initialValue: image)
+        self.onSave = onSave
+        self.onCancel = onCancel
+    }
+    
+    var body: some View {
+        NavigationStack {
+            VStack {
+                Spacer()
+                
+                Image(uiImage: displayImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxHeight: 500)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .padding()
+                
+                Spacer()
+            }
+            .navigationTitle("Edit")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        onCancel()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        // 如果有编辑逻辑，这里传回编辑后的图片
+                        onSave(displayImage)
+                    }
+                }
+            }
+            .background(Color.white.ignoresSafeArea()) // 编辑页面通常用黑色背景
+        }
+    }
+}
+
+struct StepTimerButton: View {
+    let minutes: Int
+    // 传入唯一的通知 ID，用于去系统查询
+    let timerID: String
+    // 传入点击后的回调函数，用于触发和取消系统通知
+    let onStart: () -> Void
+    let onCancel: () -> Void
+    
+    // 内部状态：记录倒计时结束时间
+    @State private var targetTime: Date? = nil
+    
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    
+    // 计算属性：判断是否正在倒计时
+    private var isRunning: Bool {
+        // 只有当目标时间存在，且目标时间在当前时间之后（还没过期）时，才算正在运行
+        guard let target = targetTime else { return false }
+        return target > Date()
+    }
+    
+    var body: some View {
+        Button {
+            if isRunning {
+                // 如果正在跑，再次点击则取消/重置
+                withAnimation {
+                    targetTime = nil
+                }
+                onCancel()
+            } else {
+                // 设置结束时间
+                targetTime = Date().addingTimeInterval(TimeInterval(minutes * 60))
+                onStart()
+            }
+            HapticManager.shared.lightImpact()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "timer")
+                
+                if let target = targetTime {
+                    Text(target, style: .timer)
+                } else {
+                    Text("\(minutes)m")
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .foregroundColor(isRunning ? .red : .orange)
+            .cornerRadius(8)
+            .overlay(
+                Capsule()
+                    .stroke(isRunning ? Color.red.opacity(0.3) : Color.orange.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .onReceive(timer) { _ in
+            guard let target = targetTime else { return }
+            
+            // 如果当前时间已经晚于目标时间（说明倒计时结束了）
+            if Date() >= target {
+                withAnimation {
+                    self.targetTime = nil
+                }
+            }
+        }
+        // 视图出现时，检查系统通知中心
+        .task {
+            await checkSystemNotificationStatus()
+        }
+        // 监听 App 从后台回到前台，再次检查（防止时间误差）
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            Task { await checkSystemNotificationStatus() }
+        }
+    }
+    
+    private func checkSystemNotificationStatus() async {
+        let center = UNUserNotificationCenter.current()
+        let requests = await center.pendingNotificationRequests()
+        
+        // 在所有等待发送的通知里，找指定ID
+        if let request = requests.first(where: { $0.identifier == timerID }) {
+            
+            var triggerDate: Date? = nil
+            
+            if let calendarTrigger = request.trigger as? UNCalendarNotificationTrigger {
+                triggerDate = calendarTrigger.nextTriggerDate()
+            }
+            
+            // 如果找到了，说明系统正在倒计时
+            // 把系统的触发时间同步给 UI
+            if let nextFireDate = triggerDate {
+                await MainActor.run {
+                    if nextFireDate > Date() {
+                        // 找到了未来的时间点，直接赋值，倒计时会自动计算差值
+                        self.targetTime = nextFireDate
+                    } else {
+                        self.targetTime = nil
+                    }
+                }
+                return
+            }
+        } else {
+            // 如果系统里没有这个通知（可能时间到了已经发完了），重置 UI
+            await MainActor.run {
+                self.targetTime = nil
+            }
+        }
+    }
+}
+
 // MARK: - 卡片正面
 struct CardFront: View {
     @Binding var currentIndex: Int
@@ -100,30 +373,33 @@ struct CardFront: View {
     }
     
     @State private var newMenuName: String = ""
+    @State private var newMenuNameComment: String = ""
     @State private var selectedImageItem: PhotosPickerItem? = nil
     @State private var showingPhotoPicker: Bool = false
+    @State private var showingImageEditor = false
+    @State private var tempSelectedImage: UIImage? = nil
     
     var body: some View {
         ZStack {
             // 背景材质 + 圆角
             RoundedRectangle(cornerRadius: 50)
-                .fill(Color.white.opacity(0.05)) // 轻微白色以增强玻璃质感
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 50))
-                .overlay(
-                    // 边缘光泽（增加立体感）
-                    RoundedRectangle(cornerRadius: 50)
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    .white.opacity(0.3),
-                                    .white.opacity(0.1)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1.2
-                        )
-                )
+                    .fill(Color.white.opacity(0.05)) // 轻微白色以增强玻璃质感
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 50))
+                    .overlay(
+                        // 边缘光泽（增加立体感）
+                        RoundedRectangle(cornerRadius: 50)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        .white.opacity(0.3),
+                                        .white.opacity(0.1)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.2
+                            )
+                    )
                 
             VStack {
 //                Spacer()
@@ -177,12 +453,35 @@ struct CardFront: View {
                     .disableAutocorrection(true)
                     .submitLabel(.done)
                     .onSubmit {
-                        updateCardFront()
+                        updateCardFrontName()
                     }
                     .disabled(!isEditingMenu)
                     Spacer()
                 }
 //                .padding(.bottom, 50)
+                
+                if !newMenuNameComment.isEmpty || isEditingMenu {
+                    HStack {
+                        Spacer()
+                        TextField(
+                            "Comment (Optional)",
+                            text: $newMenuNameComment,
+                        )
+                        .fixedSize()
+                        .frame(minWidth: 50)
+                        .foregroundStyle(.secondary)
+                        .bold()
+                        .multilineTextAlignment(.center)
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+                        .submitLabel(.done)
+                        .onSubmit {
+                            updateCardFrontNameComment()
+                        }
+                        .disabled(!isEditingMenu)
+                        Spacer()
+                    }
+                }
                 
                 Spacer()
             }
@@ -191,30 +490,104 @@ struct CardFront: View {
         .onChange(of: selectedImageItem) { _, newItem in
             guard let newItem else { return }
             Task {
-                if let data = try? await newItem.loadTransferable(type: Data.self) {
-                    if let item = currentMenuItem {
-                        item.MenuImageData = data
-                        try? modelContext.save()
+                // 异步加载图片数据
+                if let data = try? await newItem.loadTransferable(type: Data.self),
+                   let uiImage = UIImage(data: data) {
+                    
+                    // 放到主线程更新 UI
+                    await MainActor.run {
+                        self.tempSelectedImage = uiImage // 暂存图片
+                        self.showingImageEditor = true   // 打开编辑页面
+                        self.selectedImageItem = nil     // 重置选择器以便下次触发
                     }
                 }
             }
         }
+        .fullScreenCover(isPresented: $showingImageEditor) {
+            if let img = tempSelectedImage {
+                // 使用我们刚写的 UIKit 桥接器
+                AnalysisEditorWrapper(
+                    image: img,
+                    onSave: { editedImage in
+                        // 1. 保存图片逻辑
+                        saveImageToModel(editedImage)
+                        // 2. 关闭页面
+                        showingImageEditor = false
+                    },
+                    onCancel: {
+                        // 取消逻辑
+                        showingImageEditor = false
+                        tempSelectedImage = nil
+                    }
+                )
+                .ignoresSafeArea() // 确保全屏显示
+            } else {
+                // 异常处理：加载中或无图
+                ProgressView()
+                    .onAppear { showingImageEditor = false }
+            }
+        }
+//        .onChange(of: selectedImageItem) { _, newItem in
+//            guard let newItem else { return }
+//            Task {
+//                if let data = try? await newItem.loadTransferable(type: Data.self) {
+//                    if let item = currentMenuItem {
+//                        item.MenuImageData = data
+//                        try? modelContext.save()
+//                    }
+//                }
+//            }
+//        }
         .onAppear {
             newMenuName = currentMenuItem?.MenuName ?? "New Menu"
+            newMenuNameComment = currentMenuItem?.MenuNameComment ?? ""
         }
         .onChange(of: currentIndex) { oldValue, newValue in
             newMenuName = currentMenuItem?.MenuName ?? "New Menu"
+            newMenuNameComment = currentMenuItem?.MenuNameComment ?? ""
         }
         .onChange(of: menuItems) { oldValue, newValue in
             newMenuName = currentMenuItem?.MenuName ?? "New Menu"
+            newMenuNameComment = currentMenuItem?.MenuNameComment ?? ""
         }
     }
     
-    private func updateCardFront() {
+    private func saveImageToModel(_ image: UIImage) {
+        guard let imageData = image.pngData() else { return }
+        
+        if let item = currentMenuItem {
+            item.MenuImageData = imageData
+            do {
+                try modelContext.save()
+                print("Image updated successfully")
+            } catch {
+                print("Failed to save image: \(error)")
+            }
+        }
+    }
+    
+    private func updateCardFrontName() {
         if let updateCardFrontItem = menuItems.first(
             where: { $0.MenuIndex == currentIndex})
         {
             updateCardFrontItem.MenuName = newMenuName
+        } else {
+            print("The name of menu item is not found")
+        }
+        
+        do {
+            try modelContext.save()
+            print("The menu name is updated")
+        } catch {
+            print("Update menu name failed")
+        }
+    }
+    
+    private func updateCardFrontNameComment() {
+        if let updateCardFrontItem = menuItems.first(
+            where: { $0.MenuIndex == currentIndex})
+        {
+            updateCardFrontItem.MenuNameComment = newMenuNameComment
         } else {
             print("The name of menu item is not found")
         }
@@ -250,12 +623,11 @@ struct CardBack: View {
     @State private var activeAlarmIndex: Int? = nil
     
     // 计时器状态
-    @State private var isCooking = false // 是否正在计时
-    @State private var cookingStartTime: Date? = nil // 开始时间点
-    @State private var elapsedSeconds: Int = 0 // 界面显示的流逝时间
+    @State private var localIsCooking = false
+    @State private var localElapsedSeconds: Int = 0
     @State private var timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
-    @State private var currentActivity: Activity<CookingAttributes>? = nil
+//    @State private var currentActivity: Activity<CookingAttributes>? = nil
     
     var body: some View {
         ZStack {
@@ -285,7 +657,7 @@ struct CardBack: View {
                     if !isEditingMenu {
                         if let item = currentMenuItem {
                             HStack(spacing: 10) {
-                                if !isCooking {
+                                if !localIsCooking {
                                     Label("\(item.Cookingtimes)", systemImage: "flame.fill")
                                         .foregroundColor(.red)
                                     Label(formatTime(item.MeanCookingTime), systemImage: "clock.arrow.circlepath")
@@ -295,35 +667,32 @@ struct CardBack: View {
                                 Spacer()
                                 
                                 Button {
-                                    if isCooking {
-                                        finishCooking(for: item)
-                                    } else {
-                                        startCooking()
-                                    }
+                                    handleButtonPress(for: item)
+                                    HapticManager.shared.lightImpact()
                                 } label: {
                                     HStack {
                                         Label({
-                                            isCooking ? "Stop" : "Start"
+                                            localIsCooking ? "Stop" : "Start"
                                         }(), systemImage: {
-                                            isCooking ? "stop.fill" : "play"
+                                            localIsCooking ? "stop.fill" : "play"
                                         }())
                                         .bold()
                                         
-                                        if isCooking {
+                                        if localIsCooking {
                                             // 正在计时：显示动态时间
-                                            Text(formatTime(elapsedSeconds))
+                                            Text(formatTime(localElapsedSeconds))
                                                 .contentTransition(.numericText())
                                                 .padding(.leading, 2)
                                                 .bold()
                                         }
                                     }
-                                    .foregroundColor(isCooking ? .red : .blue)
+                                    .foregroundColor(localIsCooking ? .red : .blue)
                                 }
                                 .padding(10)
                                 .buttonStyle(.plain)
                                 .overlay(
                                     Capsule()
-                                        .stroke(isCooking ? Color.red : Color.blue, lineWidth: 2)
+                                        .stroke(localIsCooking ? Color.red : Color.blue, lineWidth: 2)
                                         .padding(2)
                                 )
                             }
@@ -344,6 +713,7 @@ struct CardBack: View {
                             HStack(spacing: 10) {
                                 Button {
                                     insertMaterialItem(at: 0, for: item)
+                                    HapticManager.shared.lightImpact()
                                 } label: {
                                     Image(systemName: "plus.circle")
                                         .font(.title3)
@@ -453,6 +823,7 @@ struct CardBack: View {
                                     HStack(spacing: 10) {
                                         Button {
                                             insertMaterialItem(at: index1 + 1, for: item)
+                                            HapticManager.shared.lightImpact()
                                         } label: {
                                             Image(systemName: "plus.circle")
                                                 .font(.title3)
@@ -462,6 +833,7 @@ struct CardBack: View {
                                         
                                         Button {
                                             deleteMaterialItem(at: index1, for: item)
+                                            HapticManager.shared.lightImpact()
                                         } label: {
                                             Image(systemName: "minus.circle")
                                                 .font(.title3)
@@ -492,6 +864,7 @@ struct CardBack: View {
                             HStack(spacing: 10) {
                                 Button {
                                     insertStepItem(at: 0, for: item)
+                                    HapticManager.shared.lightImpact()
                                 } label: {
                                     Image(systemName: "plus.circle")
                                         .font(.title3)
@@ -523,12 +896,30 @@ struct CardBack: View {
                                         
                                         Spacer()
                                         
-                                        if let stepAlarm = stepAlarm, stepAlarm > 0 { // 只有非 nil 且大于 0 才显示
-                                            Label("\(stepAlarm)m", systemImage: "timer")
-                                                .padding(3)
-                                                .background(Color.orange.opacity(0.1))
-                                                .foregroundColor(.orange)
-                                                .cornerRadius(8)
+                                        // MARK: - 闹钟按钮
+                                        if let stepAlarm = stepAlarm, stepAlarm > 0 {
+                                            let timerID = getNotificationID(menuName: item.MenuName, menuID: item.id, stepIndex: index2)
+                                            StepTimerButton(
+                                                minutes: stepAlarm,
+                                                timerID: timerID,
+                                                onStart: {
+                                                    startStepTimer(
+                                                        minutes: stepAlarm,
+                                                        stepIndex: index2,
+                                                        stepContent: step,
+                                                        menuName: item.MenuName,
+                                                        menuID: item.id
+                                                    )
+                                                },
+                                                onCancel: {
+                                                    cancelStepTimer(
+                                                        stepIndex: index2,
+                                                        menuName: item.MenuName,
+                                                        menuID: item.id
+                                                    )
+                                                }
+                                            )
+                                            .padding(.top, 4)
                                         }
                                         
                                     }
@@ -585,6 +976,7 @@ struct CardBack: View {
                                     HStack(spacing: 10) {
                                         Button {
                                             insertStepItem(at: index2 + 1, for: item)
+                                            HapticManager.shared.lightImpact()
                                         } label: {
                                             Image(systemName: "plus.circle")
                                                 .font(.title3)
@@ -594,6 +986,7 @@ struct CardBack: View {
                                         
                                         Button {
                                             deleteStepItem(at: index2, for: item)
+                                            HapticManager.shared.lightImpact()
                                         } label: {
                                             Image(systemName: "minus.circle")
                                                 .font(.title3)
@@ -604,6 +997,7 @@ struct CardBack: View {
                                         Button {
                                             targetStepIndex = index2
                                             showStepPhotoPicker = true
+                                            HapticManager.shared.lightImpact()
                                         } label: {
                                             Image(systemName: item.MenuStepImageData[index2] != nil ? "photo.fill" : "photo")
                                                 .font(.title3)
@@ -613,6 +1007,7 @@ struct CardBack: View {
                                         
                                         Button {
                                             activeAlarmIndex = index2
+                                            HapticManager.shared.lightImpact()
                                         } label: {
                                             let hasTime = (index2 < item.MenuStepAlarm.count && (item.MenuStepAlarm[index2] ?? 0) > 0)
                                             Image(systemName: hasTime ? "alarm.fill" : "alarm")
@@ -704,30 +1099,22 @@ struct CardBack: View {
             }
         }
         .onReceive(timer) { _ in
-            // 只有在“正在烹饪”且“有开始时间”的情况下才更新
-            if isCooking, let startTime = cookingStartTime {
-                // 计算：当前时间 - 开始时间 = 经过的秒数
-                elapsedSeconds = Int(Date().timeIntervalSince(startTime))
-            }
+            // 监听定时器，更新当前卡片的状态
+            updateLocalState()
         }
         // 监听来自灵动岛的关闭指令
         .onOpenURL { url in
-            if url.absoluteString == "selfmenu://stopCooking" {
-                // 如果收到停止指令，且当前正在烹饪，则结束
-                if isCooking, let item = currentMenuItem {
-                    print("Received stop command from Dynamic Island")
-                    finishCooking(for: item)
-                }
-            }
+            handleDeepLink(url)
         }
         .onAppear {
-            restoreCookingState()
+            updateLocalState()
         }
         // 同时也建议监听 App 从后台回到前台的事件 (ScenePhase)，体验更丝滑
         .onChange(of: scenePhase) { oldPhase, newPhase in
-            if newPhase == .active {
-                restoreCookingState()
-            }
+            updateLocalState()
+        }
+        .onChange(of: currentIndex) { oldIndex, newIndex in
+            updateLocalState()
         }
     }
     
@@ -773,89 +1160,76 @@ struct CardBack: View {
         }
     }
     
-    private func startCooking() {
-        isCooking = true
-        cookingStartTime = Date()
-        elapsedSeconds = 0
-        
-        if let item = currentMenuItem {
-            UserDefaults.standard.set(item.id.uuidString, forKey: CookingPersistence.menuIDKey)
-            UserDefaults.standard.set(cookingStartTime, forKey: CookingPersistence.startTimeKey)
-        }
-        
-        // 检查设备是否支持
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
-            print("Live Activities are NOT enabled! Check Info.plist or Settings.")
-            return
-        }
-
-        // 准备数据
-        let attributes = CookingAttributes(totalTime: 0)
-        let contentState = CookingAttributes.ContentState(
-            startTime: Date(),
-            menuName: currentMenuItem?.MenuName ?? "Food"
-        )
-        
-        // 兼容 iOS 16.2+ 的写法
-        let activityContent = ActivityContent(state: contentState, staleDate: nil)
-        
-        do {
-            // 请求启动
-            currentActivity = try Activity.request(
-                attributes: attributes,
-                content: activityContent,
-                pushType: nil
+    private func handleButtonPress(for item: MenuItems) {
+        if localIsCooking {
+            // 正在做 -> 停止
+            Task {
+                await CookingActivityManager.shared.stopCooking(menuID: item.id)
+                // 更新统计数据逻辑...
+                updateCookingStats(for: item, newDuration: localElapsedSeconds)
+                // 强制刷新一下UI
+                await MainActor.run { updateLocalState() }
+            }
+        } else {
+            // 没在做 -> 开始
+            CookingActivityManager.shared.startCooking(
+                menuName: item.MenuName,
+                menuID: item.id,
+                totalTime: 0
             )
-            print("Success! Live Activity ID: \(currentActivity?.id ?? "Unknown")")
-        } catch {
-            // 这里会打印具体的报错原因
-            print("Error starting Live Activity: \(error.localizedDescription)")
-            print("Detailed Error: \(error)")
+            // 强制刷新一下UI
+            updateLocalState()
         }
     }
-
-    // 2. 结束计时并保存数据
-    private func finishCooking(for item: MenuItems) {
-        guard let startTime = cookingStartTime else { return }
+    
+    // 刷新逻辑，这个函数每一秒都会跑一次，去询问 Manager：“当前这个菜，正在做吗？”
+    private func updateLocalState() {
+        guard let item = currentMenuItem else { return }
         
-        let duration = Int(Date().timeIntervalSince(startTime))
+        // 去 Manager 查，是否有针对当前 Item ID 的活动
+        if let activity = CookingActivityManager.shared.getActivity(for: item.id) {
+            // 找到了！说明正在做
+            self.localIsCooking = true
+            let startTime = activity.content.state.startTime
+            self.localElapsedSeconds = Int(Date().timeIntervalSince(startTime))
+        } else {
+            // 没找到，说明没在做
+            self.localIsCooking = false
+            self.localElapsedSeconds = 0
+        }
+    }
+    
+    // 处理 URL Scheme
+    private func handleDeepLink(_ url: URL) {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: true),
+              components.host == "stopCooking" else { return }
         
-        updateCookingStats(for: item, newDuration: duration)
-        
-        UserDefaults.standard.removeObject(forKey: CookingPersistence.menuIDKey)
-        UserDefaults.standard.removeObject(forKey: CookingPersistence.startTimeKey)
-        
-        // 重置状态
-        isCooking = false
-        cookingStartTime = nil
-        elapsedSeconds = 0
-        currentActivity = nil
-        
-        Task {
-            // 1. 定义结束时的显示状态 (比如显示 "Done!")
-            let finalState = CookingAttributes.ContentState(
-                startTime: Date(),
-                menuName: "Done!"
-            )
+        // 从 URL 参数中解析 menuID
+        // 格式: selfmenu://stopCooking?menuID=xxxxx-xxxx...
+        if let queryItems = components.queryItems,
+           let idString = queryItems.first(where: { $0.name == "menuID" })?.value,
+           let uuid = UUID(uuidString: idString) {
             
-            let finalContent = ActivityContent(state: finalState, staleDate: nil)
+            print("Received stop command for ID: \(uuid)")
             
-            // 2. 【关键】不要只用 currentActivity?.end()
-            // 而是遍历系统里属于这个 App 的所有活动，统统关掉。
-            // 这样即使 App 重启过，currentActivity 是 nil，也能关掉灵动岛。
-            for activity in Activity<CookingAttributes>.activities {
-                print("Terminating activity: \(activity.id)")
-                await activity.end(finalContent, dismissalPolicy: .immediate)
-            }
-            
-            // 3. 置空本地变量
-            await MainActor.run {
-                self.currentActivity = nil
+            Task {
+                // 停止活动
+                await CookingActivityManager.shared.stopCooking(menuID: uuid)
+                
+                // 如果当前正好显示的是这个菜，更新统计数据
+                if let currentItem = currentMenuItem, currentItem.id == uuid {
+                    // 这里可能需要算出时长，但活动已经结束了，可以拿当前时间 - 开始时间
+                    // 或者简单处理，等 updateLocalState 自动归零
+                    await MainActor.run {
+                        updateLocalState()
+                        updateCookingStats(for: currentItem, newDuration: localElapsedSeconds)
+                    }
+                }
             }
         }
     }
 
-    // 3. 核心算法：更新平均时间和次数
+    // 更新平均时间和次数
     private func updateCookingStats(for item: MenuItems, newDuration: Int) {
         let oldTotalTime = item.MeanCookingTime * item.Cookingtimes
         
@@ -879,39 +1253,122 @@ struct CardBack: View {
         }
     }
     
-    private func restoreCookingState() {
-        // 检查是否有SelfMenu正在进行的 Live Activity
-        let activeActivities = Activity<CookingAttributes>.activities
+    private func getNotificationID(menuName: String, menuID: UUID, stepIndex: Int) -> String {
+        let cleanName = menuName.replacingOccurrences(of: " ", with: "_")
+        return "SelfMenu_\(cleanName)_\(menuID.uuidString)_Step_\(stepIndex)"
+    }
+    
+    private func getAlarmLabel(menuName: String, menuID: UUID, stepIndex: Int) -> String {
+        let cleanName = menuName.replacingOccurrences(of: " ", with: "_")
+        return "SelfMenu-\(cleanName)-\(menuID.uuidString)-Step-\(stepIndex)-Alarm"
+    }
+    
+    private func startStepTimer(minutes: Int, stepIndex: Int, stepContent: String, menuName: String, menuID: UUID) {
+        let targetDate = Date().addingTimeInterval(TimeInterval(minutes * 60))
+        let alarmLabel = getAlarmLabel(menuName: menuName, menuID: menuID, stepIndex: stepIndex)
+        let alarmLabelUUID = UUID.from(string: alarmLabel)
         
-        // 如果系统里没有任何活动在跑，说明可能已经结束了，或者用户在锁屏上划掉了
-        guard let activity = activeActivities.first else {
-            // 双重保险：如果系统里没活动，但 UserDefaults 里还有脏数据，顺便清理掉
-            UserDefaults.standard.removeObject(forKey: CookingPersistence.menuIDKey)
-            UserDefaults.standard.removeObject(forKey: CookingPersistence.startTimeKey)
-            isCooking = false
-            cookingStartTime = nil
-            elapsedSeconds = 0
-            currentActivity = nil
-            return
+        // AlarmKit
+        if #available(iOS 26.0, *) {
+            Task {
+                do {
+                    // 获取授权状态
+                    var status = AlarmManager.shared.authorizationState
+                    if status == .notDetermined {
+                        // 请求授权
+                        status = try await AlarmManager.shared.requestAuthorization()
+                    }
+                    
+                    if status == .authorized {
+//                        let schedule = Alarm.Schedule.fixed(targetDate)
+                        
+                        let stopButton = AlarmButton(
+                            text: "Done",
+                            textColor: .orange,
+                            systemImageName: "stop.circle"
+                        )
+                        
+                        let alertPresentation = AlarmPresentation.Alert(
+                            title: "\(menuName): Step \(stepIndex + 1) Ready!",
+                            stopButton: stopButton
+                        )
+                        
+                        let attributes = AlarmAttributes<CookingAlarmMetaData>(
+                            presentation:AlarmPresentation(alert: alertPresentation),
+                            tintColor: Color.orange
+                        )
+                        
+//                        let alarmConfiguration = AlarmManager.AlarmConfiguration<CookingAlarmMetaData>(
+//                            schedule: schedule,
+//                            attributes: attributes,
+//                            sound: .default)
+                        
+//                        let _ = try await AlarmManager.shared.schedule(id: alarmLabelUUID, configuration: alarmConfiguration)
+                        let timerAlarm = try await AlarmManager.shared.schedule(
+                            id: alarmLabelUUID,
+                            configuration: .timer(
+                                duration: TimeInterval(minutes * 60),
+                                attributes: attributes
+                            )
+                        )
+                    }
+                } catch {
+                    print("AlarmKit error: \(error)")
+                }
+            }
         }
         
-        // 2. 重新绑定 Activity 实例
-        // 这样点击 "Stop Cooking" 才能控制这个“死而复生”的活动
-        self.currentActivity = activity
-        
-        // 3. 恢复数据状态
-        if let savedStartTime = UserDefaults.standard.object(forKey: CookingPersistence.startTimeKey) as? Date,
-           let savedMenuIDString = UserDefaults.standard.string(forKey: CookingPersistence.menuIDKey),
-           let item = currentMenuItem { // 确保当前卡片就是正在做的那个菜
-            
-            // 只有当保存 ID 等于当前卡片 ID 时才恢复界面
-            // (防止你在做 Pizza，结果滑到了 Pasta 的卡片，Pasta 却显示正在做)
-            if item.id.uuidString == savedMenuIDString {
-                self.cookingStartTime = savedStartTime
-                self.isCooking = true
-                self.elapsedSeconds = Int(Date().timeIntervalSince(savedStartTime))
-                print("Restored cooking session from disk")
+        // The normal notification
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if granted {
+                let content = UNMutableNotificationContent()
+                content.title = "\(menuName): Step \(stepIndex + 1) Timer Done! 🍳"
+                content.body = stepContent
+                content.sound = .default
+                
+                let targetDate = Date().addingTimeInterval(TimeInterval(minutes * 60))
+                let dateComponents = Calendar.current.dateComponents(
+                    [.year, .month, .day, .hour, .minute, .second],
+                    from: targetDate
+                )
+                let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
+                
+                let id = getNotificationID(menuName: menuName, menuID: menuID, stepIndex: stepIndex)
+                
+                let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+                
+                center.add(request) { error in
+                    if let error = error {
+                        print("Error scheduling notification: \(error)")
+                    }
+                }
+            } else {
+                print("Notification permission denied")
             }
+        }
+    }
+    
+    private func cancelStepTimer(stepIndex: Int, menuName: String, menuID: UUID) {
+        let center = UNUserNotificationCenter.current()
+        
+        let id = getNotificationID(menuName: menuName, menuID: menuID, stepIndex: stepIndex)
+        let alarmLabel = getAlarmLabel(menuName: menuName, menuID: menuID, stepIndex: stepIndex)
+        let alarmLabelUUID = UUID.from(string: alarmLabel)
+        
+        center.removePendingNotificationRequests(withIdentifiers: [id])
+        center.removeDeliveredNotifications(withIdentifiers: [id])
+        
+        if #available(iOS 26.0, *) {
+            #if canImport(AlarmKit)
+            Task {
+                do {
+                    try AlarmManager.shared.cancel(id: alarmLabelUUID)
+                } catch {
+                    print("AlarmKit error: \(error)")
+                }
+            }
+            #endif
         }
     }
 }
@@ -948,6 +1405,7 @@ struct FlipCardView:View {
                     Spacer()
                     Button {
                         showingDeletePageConfirm.toggle()
+                        HapticManager.shared.lightImpact()
                     } label: {
                         Label("Delete", systemImage: "trash")
                             .font(.title2)
@@ -978,6 +1436,7 @@ struct FlipCardView:View {
                     if !isEditingMenu {
                         Button {
                             isEditingMenu = true
+                            HapticManager.shared.lightImpact()
                         } label: {
                             Label("Edit", systemImage: "wrench.adjustable")
                                 .font(.title2)
@@ -993,6 +1452,7 @@ struct FlipCardView:View {
                     } else {
                         Button {
                             isEditingMenu = false
+                            HapticManager.shared.lightImpact()
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                 baseVerticalOffset = 0
                                 verticalOffset = 0
@@ -1144,6 +1604,7 @@ struct FlipCardView:View {
                     }
             )
             .onTapGesture {
+                HapticManager.shared.lightImpact()
                 withAnimation(.spring(duration: 0.6)) {
                     rotation += 180
                     flipped.toggle()
@@ -1279,6 +1740,7 @@ struct BottomSwitcher: View {
                         MenuImageData: nil,
                         MenuIndex: newIndex,
                         MenuName: "New Menu",
+                        MenuNameComment: nil,
                         MenuMaterialNames: [],
                         MenuMaterialCounts: [],
                         MenuMaterialComments: [],
@@ -1400,10 +1862,10 @@ struct ContentView: View {
             ZStack {
                 VStack {
                     // 将 Label 放置在 VStack 的顶部
-                    Label("SelfMenu", systemImage: "book")
-                        .font(.footnote)
+                    Label("SelfMenus", systemImage: "book")
+                        .font(.system(size: 10))
                         .foregroundColor(.orange)
-                        .padding(8) // 添加一些内边距
+                        .padding(5) // 添加一些内边距
 //                        .background(.thinMaterial) // 使用半透明材质帮助观察
                         .cornerRadius(8)
                         .overlay(
@@ -1414,8 +1876,7 @@ struct ContentView: View {
                     
                     Spacer() // 将 Label 顶到顶部
                 }
-                // 使用负数 offset 将整个 VStack 向上移动
-                .offset(y: 20)
+                .offset(y: UIDevice.hasDynamicIsland ? 18 : 3)
                 .frame(maxWidth: .infinity, alignment: .top)
                 
                 VStack {
@@ -1468,6 +1929,7 @@ struct ContentView: View {
             MenuImageData: nil,
             MenuIndex: 0,
             MenuName: "Pizza",
+            MenuNameComment: nil,
             MenuMaterialNames: [
                 "Pork",
                 "Flour"
@@ -1485,6 +1947,7 @@ struct ContentView: View {
             MenuImageData: nil,
             MenuIndex: 1,
             MenuName: "Spaghetti",
+            MenuNameComment: nil,
             MenuMaterialNames: [
 //                MaterialItem(name: "Spaghetti", count: "1 Bag", comment: ""),
 //                MaterialItem(name: "Pork", count: "300g", comment: ""),

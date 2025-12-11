@@ -13,6 +13,7 @@ struct CookingAttributes: ActivityAttributes {
         // 动态数据：这里我们只需要开始时间，系统会自动计算流逝时间，不需要每一秒刷新一次
         var startTime: Date
         var menuName: String
+        var menuID: UUID
     }
     
     // 静态数据（活动开始后不会变的数据）

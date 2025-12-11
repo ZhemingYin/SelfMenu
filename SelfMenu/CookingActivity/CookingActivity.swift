@@ -27,7 +27,7 @@ struct CookingActivity: Widget {
                         .font(.headline)
                         .foregroundColor(.orange)
                 }
-                .padding(.leading, 20)
+                .padding(.leading, 5)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 
                 // 右边：自动刷新的计时器
@@ -70,7 +70,7 @@ struct CookingActivity: Widget {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         
-                        Link(destination: URL(string: "selfmenu://stopCooking")!) {
+                        Link(destination: URL(string: "selfmenu://stopCooking?menuID=\(context.state.menuID.uuidString)")!) {
                             Image(systemName: "xmark.circle")
                                 .font(.system(size: 50))
                                 .symbolRenderingMode(.palette)
@@ -108,5 +108,5 @@ struct CookingActivity: Widget {
 #Preview("Notification", as: .content, using: CookingAttributes(totalTime: 0)) {
    CookingActivity()
 } contentStates: {
-    CookingAttributes.ContentState(startTime: Date(), menuName: "Steak")
+    CookingAttributes.ContentState(startTime: Date(), menuName: "Steak", menuID: UUID())
 }

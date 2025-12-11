@@ -14,6 +14,7 @@ final class MenuItems {
     var MenuImageData: Data? = nil
     var MenuIndex: Int = 0
     var MenuName: String = "Unknown"
+    var MenuNameComment: String? = nil
     var MenuMaterialNames: [String] = []
     var MenuMaterialCounts: [String] = []
     var MenuMaterialComments: [String] = []
@@ -23,10 +24,11 @@ final class MenuItems {
     var Cookingtimes: Int = 0
     var MeanCookingTime: Int = 0    // in seconds
     
-    init(MenuImageData: Data? = nil, MenuIndex: Int, MenuName: String, MenuMaterialNames: [String], MenuMaterialCounts: [String], MenuMaterialComments: [String], MenuSteps: [String], MenuStepAlarm: [Int?], MenuStepImageData: [Data?], Cookingtimes: Int, MeanCookingTime: Int) {
+    init(MenuImageData: Data? = nil, MenuIndex: Int, MenuName: String, MenuNameComment: String?, MenuMaterialNames: [String], MenuMaterialCounts: [String], MenuMaterialComments: [String], MenuSteps: [String], MenuStepAlarm: [Int?], MenuStepImageData: [Data?], Cookingtimes: Int, MeanCookingTime: Int) {
         self.MenuImageData = MenuImageData
         self.MenuIndex = MenuIndex
         self.MenuName = MenuName
+        self.MenuNameComment = MenuNameComment
         self.MenuMaterialNames = MenuMaterialNames
         self.MenuMaterialCounts = MenuMaterialCounts
         self.MenuMaterialComments = MenuMaterialComments
